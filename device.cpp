@@ -37,7 +37,7 @@ bool dev_open(QString &str) {
         dev_fwVersion = cur_dev->release_number;
         dev_flashSize = spi_readFlashSize();
         dev_slots = dev_flashSize / SLOTSIZE;
-        swprintf(wstr,L"Opened %s (%04X:%04X:%04X:%s:%dM)", cur_dev->product_string, cur_dev->vendor_id, cur_dev->product_id, cur_dev->release_number, cur_dev->serial_number, dev_flashSize/0x20000);
+        swprintf(wstr,256,L"Opened %s (%04X:%04X:%04X:%s:%dM)", cur_dev->product_string, cur_dev->vendor_id, cur_dev->product_id, cur_dev->release_number, cur_dev->serial_number, dev_flashSize/0x20000);
         str = QString::fromWCharArray(wstr);
         if(!dev_flashSize) {
             str = QString("Flash size failed.");

@@ -14,7 +14,6 @@ TEMPLATE = app
 
 SOURCES += main.cpp\
         mainwindow.cpp \
-    hidapi/hid-windows.c \
     device.cpp \
     spi.cpp \
     os.cpp \
@@ -32,4 +31,12 @@ HEADERS  += mainwindow.h \
 FORMS    += mainwindow.ui \
     flashwrite.ui
 
-win32: LIBS += -lsetupapi
+win32 {
+	LIBS += -lsetupapi
+	SOURCES += hidapi/hid-windows.c
+}
+macx {
+	LIBS += -framework IOKit -framework CoreFoundation -liconv
+	SOURCES += hidapi/hid-mac.c
+}
+
