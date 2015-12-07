@@ -1,0 +1,23 @@
+#pragma once
+
+#include <QStringList>
+#include <stdint.h>
+
+bool loadFile(char *filename, uint8_t **buf, int *filesize);
+
+//void FDStest(char *name);
+bool FDS_readDisk(char *filename_raw, char *filename_bin, char *filename_fds);
+bool FDS_writeDisk(char *name);
+bool FDS_writeFlash(char *name, int slot, void *user, void(*callback)(void*,int));
+bool FDS_list(QStringList &list, int *empty);
+bool FDS_rawToBin(char *filename_raw, char *filename_bin);
+bool FDS_readFlashToFDS(char *filename_fds, int slot);
+
+int fds_to_bin(uint8_t *dst, uint8_t *src, int dstSize);
+bool FDS_convertDisk(char *filename, char *out);
+bool FDS_convertDiskraw03(char *filename, char *out);
+
+int FDS_getDiskSides(char *filename);
+int FDS_getEmptySlot(int sides);
+int FDS_findSlot(char *name);
+int FDS_eraseSlot(int slot);
