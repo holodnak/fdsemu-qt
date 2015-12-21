@@ -3,6 +3,14 @@
 
 #include <QMainWindow>
 #include <QLabel>
+#include <stdint.h>
+#include "fdsemu-lib/Device.h"
+#include "fdsemu-lib/System.h"
+
+extern CDevice dev;
+
+bool write_flash(char *filename, int slot, void *data, void(*callback)(void*,uint32_t));
+int FDS_getDiskSides(char *filename);
 
 namespace Ui {
 class MainWindow;
@@ -29,6 +37,22 @@ private slots:
     void on_actionE_xit_triggered();
 
     void on_action_Delete_triggered();
+
+    void on_action_About_triggered();
+
+    void on_action_Write_disk_triggered();
+
+    void on_action_Write_disk_image_triggered();
+
+    void on_action_Save_disk_image_triggered();
+
+    void on_action_Save_triggered();
+
+    void on_actionUpdate_loader_triggered();
+
+    void on_action_Erase_triggered();
+
+    void on_actionUpdate_firmware_triggered();
 
 private:
     Ui::MainWindow *ui;

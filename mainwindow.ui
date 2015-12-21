@@ -80,8 +80,6 @@
     </property>
     <addaction name="action_Read_disk"/>
     <addaction name="action_Write_disk"/>
-    <addaction name="separator"/>
-    <addaction name="action_Erase_disk"/>
    </widget>
    <addaction name="menu_File"/>
    <addaction name="menu_Operations"/>
@@ -113,6 +111,9 @@
    </property>
   </action>
   <action name="action_Dump">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
    <property name="text">
     <string>&amp;Dump...</string>
    </property>
@@ -169,6 +170,9 @@
    </property>
   </action>
   <action name="action_Read_disk">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
    <property name="text">
     <string>&amp;Read disk...</string>
    </property>
@@ -177,19 +181,14 @@
    </property>
   </action>
   <action name="action_Write_disk">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
    <property name="text">
     <string>&amp;Write disk...</string>
    </property>
    <property name="statusTip">
     <string>Write a .FDS disk image to a real FDS drive.</string>
-   </property>
-  </action>
-  <action name="action_Erase_disk">
-   <property name="text">
-    <string>&amp;Erase disk...</string>
-   </property>
-   <property name="statusTip">
-    <string>Erase a disk in the disk drive.</string>
    </property>
   </action>
   <action name="action_Write_disk_image">
