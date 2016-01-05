@@ -124,12 +124,28 @@ void WriteStatus::writefirmware(QString filename)
     buf32[(0x8000 - 4) / 4] = chksum;
 
     printf("uploading new firmware");
-    if (!dev.Flash->Write(buf, 0x8000, 0x8000, write_callback, this)) {
-        printf("Write failed.\n");
-        hide();
-        delete[] buf;
-        return;
-    }
+    //newer firmwares store the firmware image in sram to be updated
+    if (dev.Version > 792) {
+        printf("uploading new firmware to sram\n");
+		if (!dev.Sram->Write(buf, 0x0000, 0x8000)) {
+            printf("Write failed.\n");
+            hide();
+            delete[] buf;
+            return;
+		}
+	}
+
+	//older firmware store the firmware image into flash memory
+	else {
+		printf("uploading new firmware to flash");
+        if (!dev.Flash->Write(buf, 0x8000, 0x8000, write_callback, this)) {
+            printf("Write failed.\n");
+            hide();
+            delete[] buf;
+            return;
+		}
+		printf("\n");
+	}
     delete[] buf;
 
     ui->progressBar->setValue(0x8000);
@@ -143,7 +159,6 @@ void WriteStatus::writefirmware(QString filename)
     if (!dev.Open()) {
         QMessageBox::information(NULL,"Error","Error re-opening device.  Try reinserting it and run this program again.");
         hide();
-//        printf("Open failed.\n");
         return;
     }
 
@@ -152,12 +167,4 @@ void WriteStatus::writefirmware(QString filename)
 
     hide();
 
-/*    if(write_flash((char*)filename.toStdString().c_str(), 0x10000, this, write_callback) == false) {
-        hide();
-        exec();
-    }
-
-    else {
-        hide();
-    }*/
 }

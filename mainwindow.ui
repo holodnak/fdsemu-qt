@@ -63,8 +63,6 @@
     <addaction name="action_Save_disk_image"/>
     <addaction name="action_Erase"/>
     <addaction name="separator"/>
-    <addaction name="action_Dump"/>
-    <addaction name="separator"/>
     <addaction name="actionUpdate_loader"/>
     <addaction name="actionUpdate_firmware"/>
    </widget>

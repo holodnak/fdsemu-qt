@@ -1,3 +1,5 @@
+#include "windows/hid.c"
+#if 0
 /*******************************************************
  HIDAPI - Multi-Platform library for
  communication with HID devices.
@@ -770,8 +772,7 @@ int HID_API_EXPORT HID_API_CALL hid_get_feature_report(hid_device *dev, unsigned
         if (GetLastError() != ERROR_IO_PENDING) {
             /* DeviceIoControl() failed. Return error. */
             register_error(dev, "Send Feature Report DeviceIoControl");
-				printf("hid_get_feature_report: error: Send Feature Report DeviceIoControl\n");
-				return -1;
+            return -1;
         }
     }
 
@@ -781,8 +782,7 @@ int HID_API_EXPORT HID_API_CALL hid_get_feature_report(hid_device *dev, unsigned
     if (!res) {
         /* The operation failed. */
         register_error(dev, "Send Feature Report GetOverLappedResult");
-		  printf("hid_get_feature_report: error: Send Feature Report GetOverLappedResult\n");
-		  return -1;
+        return -1;
     }
     return bytes_returned;
 #endif
@@ -924,4 +924,5 @@ int __cdecl main(int argc, char* argv[])
 
 #ifdef __cplusplus
 } /* extern "C" */
+#endif
 #endif

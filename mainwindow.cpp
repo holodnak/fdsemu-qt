@@ -7,11 +7,13 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "writestatus.h"
+#include "writefilesdialog.h"
+#include "diskreaddialog.h"
 #include "fdsemu-lib/Device.h"
 #include "fdsemu-lib/System.h"
 
 #define VERSION_HI 0
-#define VERSION_LO 40
+#define VERSION_LO 42
 #define VERSION (VERSION_LO + (VERSION_HI * 100))
 
 CDevice dev;
@@ -429,27 +431,31 @@ int crc_detect(uint8_t *raw, int in, int rawSize) {
 }
 
 //gap end is known, backtrack and mark the start.  !! this assumes junk data exists between EOF and gap start
-static void mark_gap_start(uint8_t *raw, int gapEnd) {
+static void mark_gap_start(QStringList *messages, uint8_t *raw, int gapEnd) {
     int i;
+    QString str;
     for (i = gapEnd - 1; i >= 0 && raw[i] == 0; --i)
     {
     }
     raw[i + 1] = 3;
-    printf("mark gap %X-%X\n", i + 1, gapEnd);
+
+    str.sprintf("mark gap %X-%X\n", i + 1, gapEnd);
+    messages->append(str);
 }
 
 //For information only for now.  This checks for standard file format
-static void verify_block(uint8_t *bin, int start, int *reverse) {
+static void verify_block(QStringList *messages, uint8_t *bin, int start, int *reverse) {
     enum { MAX_GAP = (976 + 100) / 8, MIN_GAP = (976 - 100) / 8 };
     static const uint8_t next[] = { 0,2,3,4,3 };
     static int last = 0;
     static int lastLen = 0;
     static int blockCount = 0;
+    QString str, str2;
 
     int len = 0;
     uint8_t type = bin[start];
 
-    printf("%d:%X", ++blockCount, type);
+    str.sprintf("%d:%X", ++blockCount, type);
 
     switch (type) {
     case 1:
@@ -465,22 +471,25 @@ static void verify_block(uint8_t *bin, int start, int *reverse) {
         len = 1 + (bin[last + 13] | (bin[last + 14] << 8));
         break;
     default:
-        printf(" bad block (%X)\n", start);
+        str2.sprintf(" bad block (%X)\n", start);
+        messages->append(str + str2);
         return;
     }
-    printf(" %X-%X / %X-%X(%X)", reverse[start], reverse[start + len], start, start + len, len);
+    str2.sprintf(" %X-%X / %X-%X(%X)", reverse[start], reverse[start + len], start, start + len, len);
 
+    str += str2;
     if ((!last && type != 1) || (last && type != next[bin[last]]))
-        printf(", wrong filetype");
+        str += QString(", wrong filetype");
     if (calc_crc(bin + start, len + 2) != 0)
-        printf(", bad CRC");
+        str += QString(", bad CRC");
     if (last && (last + lastLen + MAX_GAP)<start)
-        printf(", lost block?");
+        str += QString(", lost block?");
     if (last + lastLen + MIN_GAP>start)
-        printf(", block overlap?");
+        str += QString(", block overlap?");
     //if(type==3 && ...)    //check other fields in file header?
 
-    printf("\n");
+    str += "\n";
+    messages->append(str);
     last = start;
     lastLen = len;
 }
@@ -507,7 +516,7 @@ that it's probably a standard FDS game image but this should still make a best a
 
 _bin and _binSize are updated on exit.  alloc'd buffer is returned in _bin, caller is responsible for freeing it.
 */
-static void raw03_to_bin(uint8_t *raw, int rawSize, uint8_t **_bin, int *_binSize) {
+static void raw03_to_bin(QStringList *messages, uint8_t *raw, int rawSize, uint8_t **_bin, int *_binSize) {
     enum {
         BINSIZE = 0xa0000,
         POST_GLITCH_GARBAGE = 16,
@@ -520,6 +529,7 @@ static void raw03_to_bin(uint8_t *raw, int rawSize, uint8_t **_bin, int *_binSiz
     int *reverse;
     int glitch;
     int zeros;
+    QString str;
 
     bin = (uint8_t*)malloc(BINSIZE);
     reverse = (int*)malloc(BINSIZE*sizeof(int));
@@ -542,7 +552,7 @@ static void raw03_to_bin(uint8_t *raw, int rawSize, uint8_t **_bin, int *_binSiz
         else if (raw[in] == 0) {
             zeros++;
             if (glitch && junk && zeros>SHORT_GAP && (junk - glitch)<POST_GLITCH_GARBAGE) {
-                mark_gap_start(raw, in);
+                mark_gap_start(messages, raw, in);
                 glitch = 0;
             }
         }
@@ -554,8 +564,9 @@ static void raw03_to_bin(uint8_t *raw, int rawSize, uint8_t **_bin, int *_binSiz
 
     in = findFirstBlock(raw);
     if (in>0) {
-        printf("header at %X\n", in);
-        mark_gap_start(raw, in - 1);
+        str.sprintf("header at %X\n", in);
+        messages->append(str);
+        mark_gap_start(messages, raw, in - 1);
     }
     /*
     do {
@@ -573,7 +584,8 @@ static void raw03_to_bin(uint8_t *raw, int rawSize, uint8_t **_bin, int *_binSiz
     if (in>0) do {
         out = crc_detect(raw, in, rawSize);
         if (out) {
-            printf("crc found %X-%X\n", in, out);
+            str.sprintf("crc found %X-%X\n", in, out);
+            messages->append(str);
             raw[out] = 3;     //mark glitch (gap start)
                                     //raw[in-1]=0xff;   //mark gap end
         }
@@ -588,7 +600,7 @@ static void raw03_to_bin(uint8_t *raw, int rawSize, uint8_t **_bin, int *_binSiz
         }
         else if (raw[in] == 1) {
             if (zeros>LONG_GAP && (in - zeros - LONG_POST_GLITCH_GARBAGE)<glitch) {
-                mark_gap_start(raw, in);
+                mark_gap_start(messages, raw, in);
                 raw[in] = 0xff;
             }
         }
@@ -627,7 +639,7 @@ static void raw03_to_bin(uint8_t *raw, int rawSize, uint8_t **_bin, int *_binSiz
             break;
         case 0xff:  //block end
             if (lastBlockStart)
-                verify_block(bin, lastBlockStart, reverse);
+                verify_block(messages, bin, lastBlockStart, reverse);
             bin[out / 8] = 0x80;
             out = (out | 7) + 1;      //byte-align for readability
             lastBlockStart = out / 8;
@@ -643,7 +655,7 @@ static void raw03_to_bin(uint8_t *raw, int rawSize, uint8_t **_bin, int *_binSiz
         reverse[out / 8] = in;
     }
     //last block
-    verify_block(bin, lastBlockStart, reverse);
+    verify_block(messages, bin, lastBlockStart, reverse);
 
     *_bin = bin;
     *_binSize = out / 8 + 1;
@@ -651,7 +663,7 @@ static void raw03_to_bin(uint8_t *raw, int rawSize, uint8_t **_bin, int *_binSiz
 }
 
 // TODO - only handles one side, files will need to be joined manually
-bool FDS_readDisk(char *filename_raw, char *filename_bin, char *filename_fds) {
+bool FDS_readDisk(char *filename_raw, char *filename_bin, char *filename_fds, void(*callback)(void*,int), void *data) {
     enum { READBUFSIZE = 0x90000 };
 
     FILE *f;
@@ -671,8 +683,12 @@ bool FDS_readDisk(char *filename_raw, char *filename_bin, char *filename_fds) {
     do {
         result = dev.DiskRead(readBuf + bytesIn);
         bytesIn += result;
-        if (!(bytesIn % ((DISK_READMAX)* 32)))
-            printf(".");
+        if (!(bytesIn % ((DISK_READMAX)* 32))) {
+            if(callback) {
+                callback(data,bytesIn);
+            }
+//            printf(".");
+        }
     } while (result == DISK_READMAX && bytesIn<READBUFSIZE - DISK_READMAX);
     printf("\n");
     if (result<0) {
@@ -706,6 +722,98 @@ bool FDS_readDisk(char *filename_raw, char *filename_bin, char *filename_fds) {
     else if (filename_bin) {
         uint8_t *binBuf;
         int binSize;
+        QStringList messages;
+
+        raw03_to_bin(&messages, readBuf, bytesIn, &binBuf, &binSize);
+        if ((f = fopen(filename_bin, "wb"))) {
+            fwrite(binBuf, 1, binSize, f);
+            fclose(f);
+            printf("Wrote %s\n", filename_bin);
+        }
+        free(binBuf);
+    }
+
+    free(readBuf);
+    return true;
+}
+
+bool FDS_readDisk2(QStringList *messages, uint8_t **rawbuf, int *rawlen, uint8_t **binbuf, int *binlen, void(*callback)(void*,int), void *data) {
+    enum { READBUFSIZE = 0x90000 };
+
+    FILE *f;
+    uint8_t *readBuf = NULL;
+    int result;
+    int bytesIn = 0;
+
+    *rawbuf = 0;
+    *rawlen = 0;
+    *binbuf = 0;
+    *binlen = 0;
+
+    messages->append("Started read...\n");
+    //if(!(dev_readIO()&MEDIA_SET)) {
+    //    printf("Warning - Disk not inserted?\n");
+    //}
+    if (!dev.DiskReadStart()) {
+        messages->append("DiskReadStart failed\n");
+        return false;
+    }
+
+    readBuf = (uint8_t*)malloc(READBUFSIZE);
+
+    do {
+        result = dev.DiskRead(readBuf + bytesIn);
+        bytesIn += result;
+        if (!(bytesIn % ((DISK_READMAX)* 32))) {
+            if(callback) {
+                callback(data,bytesIn);
+            }
+//            printf(".");
+        }
+    } while (result == DISK_READMAX && bytesIn<READBUFSIZE - DISK_READMAX);
+    printf("\n");
+
+    if (result<0) {
+        messages->append("Read error.\n");
+        free(readBuf);
+        free(*rawbuf);
+        return false;
+    }
+
+    *rawbuf = (uint8_t*)malloc(bytesIn);
+    *rawlen = bytesIn;
+    memcpy(*rawbuf,readBuf,bytesIn);
+
+    raw_to_raw03(readBuf, bytesIn);
+
+    raw03_to_bin(messages,readBuf, bytesIn, binbuf, binlen);
+
+/*    if (filename_raw) {
+        if ((f = fopen(filename_raw, "wb"))) {
+            fwrite(readBuf, 1, bytesIn, f);
+            fclose(f);
+            printf("Wrote %s\n", filename_raw);
+        }
+    }
+
+    raw_to_raw03(readBuf, bytesIn);
+
+    //decode to .fds
+    if (filename_fds) {
+        uint8_t *fds = (uint8_t*)malloc(FDSSIZE + 16);   //extra room for CRC junk
+        raw03_to_fds(readBuf, fds, bytesIn);
+        if ((f = fopen(filename_fds, "wb"))) {
+            fwrite(fds, 1, FDSSIZE, f);
+            fclose(f);
+            printf("Wrote %s\n", filename_fds);
+        }
+        free(fds);
+
+        //decode to .bin
+    }
+    else if (filename_bin) {
+        uint8_t *binBuf;
+        int binSize;
 
         raw03_to_bin(readBuf, bytesIn, &binBuf, &binSize);
         if ((f = fopen(filename_bin, "wb"))) {
@@ -714,7 +822,7 @@ bool FDS_readDisk(char *filename_raw, char *filename_bin, char *filename_fds) {
             printf("Wrote %s\n", filename_bin);
         }
         free(binBuf);
-    }
+    }*/
 
     free(readBuf);
     return true;
@@ -787,9 +895,17 @@ bool FDS_writeDisk(char *filename) {
         if (inpos<filesize && inbuf[inpos] == 0x01) {
             printf("\nPlease wait for disk activity to stop before pressing ENTER to write the next disk side.\n");
             prompt = readKb();
+            if(QMessageBox::information(NULL,"Message","Please wait for disk activity to stop, then flip the disk and press OK to begin writing the next disk side.",
+                                     QMessageBox::Ok,QMessageBox::Cancel) == QMessageBox::Ok) {
+                prompt = 0x0D;
+            }
+            else {
+                prompt = 0;
+            }
+
         }
         else {
-            printf("\nDisk image sent to SRAM on device and is currently writing.\nPlease wait for disk activity to stop before removing disk.\n");
+            QMessageBox::information(NULL,"Message","\nDisk image sent to SRAM on device and is currently writing.\nPlease wait for disk activity to stop before removing disk.\n");
         }
     } while (prompt == 0x0d);
 
@@ -868,8 +984,9 @@ bool write_flash(char *filename, int slot, void *data, void(*callback)(void*,uin
     uint8_t *outbuf = 0;
     int filesize;
     uint32_t i, j;
-    char *shortName;
+    char *shortName,headerName[256];
     TFlashHeader *headers;
+    int duplicate = 0;
 
     dev.FlashUtil->ReadHeaders();
     headers = dev.FlashUtil->GetHeaders();
@@ -902,12 +1019,14 @@ bool write_flash(char *filename, int slot, void *data, void(*callback)(void*,uin
     //check if an image of the same name is is already stored
     for (i = 1; i < dev.Slots; i++) {
         if (strncmp(shortName, (char*)headers[i].filename, 240) == 0) {
-            if (force == 0) {
-                printf("An image of the same name is already stored in flash.\n");
-                printf("If you really want to store this, add '--force' to the command line.\n");
-                delete[] inbuf;
-                return(false);
+            if (duplicate == 0) {
+                if(QMessageBox::information(NULL,"Error","An image of the same name is already stored in flash.\n\nDo you want to write another copy?",
+                                            QMessageBox::Yes,QMessageBox::No) == QMessageBox::No) {
+                    delete[] inbuf;
+                    return(false);
+                }
             }
+            duplicate++;
         }
     }
 
@@ -976,7 +1095,13 @@ bool write_flash(char *filename, int slot, void *data, void(*callback)(void*,uin
             outbuf[245] = DEFAULT_LEAD_IN / 256;
 
             if (side == 0) {
-                strncpy((char*)outbuf, shortName, 240);
+                if(duplicate == 0) {
+                    strcpy(headerName,shortName);
+                }
+                else {
+                    sprintf(headerName,"%s (%d)",shortName,duplicate);
+                }
+                strncpy((char*)outbuf, headerName, 240);
             }
             if(callback) {
                 callback(data, (side << 24) | 0x10000000);
@@ -1034,15 +1159,14 @@ int FDS_eraseSlot(int slot)
         return(1);
     }
     dev.Flash->EraseSlot(slot);
-//    spi_erasePage(SLOTSIZE * slot);
-    for(uint32_t i=slot;i<dev.Slots;i++) {
+    for(uint32_t i=(slot + 1);i<dev.Slots;i++) {
         buf = headers[i].filename;
         if(buf[0]==0xff) {          //empty
             return(0);
         } else if(buf[0]!=0) {      //filename present
             return(0);
         } else {                    //next side
-            dev.Flash->EraseSlot(slot);
+            dev.Flash->EraseSlot(i);
         }
     }
     return(0);
@@ -1132,8 +1256,6 @@ MainWindow::MainWindow(QWidget *parent) :
 //    ui->listWidget->addAction(ui->action_Info);
     ui->listWidget->addAction(ui->action_Delete);
 
-    ui->action_Dump->setEnabled(false);
-    ui->action_Read_disk->setEnabled(false);
     ui->action_Write_disk->setEnabled(false);
 
     if(dev.Open() == false) {
@@ -1162,6 +1284,12 @@ void MainWindow::updateList()
     int empty = 0;
     uint32_t i;
 
+    str.sprintf("Updating list...");
+    ui->listWidget->setEnabled(false);
+    ui->label->setText(str);
+    ui->label->adjustSize();
+    qApp->processEvents();
+
     dev.FlashUtil->ReadHeaders();
     headers = dev.FlashUtil->GetHeaders();
     list.clear();
@@ -1169,7 +1297,8 @@ void MainWindow::updateList()
         QMessageBox::information(NULL, "Error", "Device was disconnected or not found");
         return;
     }
-    for(i=1;i<dev.Slots;i++) {
+    i = (dev.Version > 792) ? 0 : 1;
+    for(;i<dev.Slots;i++) {
         if(headers[i].filename[0] == 0xFF) {
             empty++;
         }
@@ -1187,17 +1316,19 @@ void MainWindow::updateList()
     ui->listWidget->sortItems(Qt::AscendingOrder);
     ui->label->setText(str);
     ui->label->adjustSize();
+    ui->listWidget->setEnabled(true);
+    qApp->processEvents();
 }
 
 void MainWindow::openFiles(QStringList &list)
 {
-    WriteStatus *fw = new WriteStatus(this);
+    WriteFilesDialog *wfd = new WriteFilesDialog(this);
+    QString str;
 
-    for (int i = 0; i < list.size() && i < 32;i++) {
-        QString filename = list.at(i);
+    wfd->writeFiles(list);
 
-        fw->write(filename);
-    }
+    delete wfd;
+    qApp->processEvents();
 
     updateList();
 }
@@ -1239,6 +1370,8 @@ void MainWindow::on_action_Delete_triggered()
         QString str = ui->listWidget->selectedItems().at(0)->text();
         int slot = FDS_findSlot((char*)str.toStdString().c_str());
 
+        ui->listWidget->setEnabled(false);
+        qApp->processEvents();
         FDS_eraseSlot(slot);
         updateList();
     }
@@ -1306,6 +1439,10 @@ void MainWindow::on_actionUpdate_loader_triggered()
 {
     QString filename;
 
+    if(dev.Version > 792) {
+        QMessageBox::information(NULL,"Error","Firmware builds after 792 have the loader built-in.  No updating is possible.");
+        return;
+    }
     filename = QFileDialog::getOpenFileName(this, tr("Open loader disk image"), "", tr("fwNES FDS Images (*.fds)"));
     if(filename != "") {
         char *fn = (char*)filename.toStdString().c_str();
@@ -1349,4 +1486,11 @@ void MainWindow::on_actionUpdate_firmware_triggered()
         statusLabel->adjustSize();
     }
 
+}
+
+void MainWindow::on_action_Read_disk_triggered()
+{
+    DiskReadDialog *drd = new DiskReadDialog(this);
+
+    drd->exec();
 }

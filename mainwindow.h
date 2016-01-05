@@ -54,6 +54,8 @@ private slots:
 
     void on_actionUpdate_firmware_triggered();
 
+    void on_action_Read_disk_triggered();
+
 private:
     Ui::MainWindow *ui;
 };
